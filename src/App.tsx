@@ -5,17 +5,21 @@ import { auth, firebaseConfigured, googleProvider } from "./firebase";
 import type { ResumeReview, StudentProfile } from "./types";
 
 const emptyProfile: StudentProfile = { name: "", university: "", study: "", graduationYear: "" };
-function getProfile(user: User): StudentProfile {
+const profileKey = (user: User | null) => "portal-profile-" + (user ? user.uid : "guest");
+function getProfile(user: User | null): StudentProfile {
+  const displayName = user?.displayName || "";
   try {
-    const saved = localStorage.getItem("portal-profile-" + user.uid);
-    return saved ? { ...emptyProfile, ...JSON.parse(saved), name: user.displayName || JSON.parse(saved).name || "" } : { ...emptyProfile, name: user.displayName || "" };
-  } catch { return { ...emptyProfile, name: user.displayName || "" }; }
+    const saved = localStorage.getItem(profileKey(user));
+    const parsed = saved ? JSON.parse(saved) : {};
+    return { ...emptyProfile, ...parsed, name: displayName || parsed.name || "" };
+  } catch { return { ...emptyProfile, name: displayName }; }
 }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authBusy, setAuthBusy] = useState(false);
+  const [guest, setGuest] = useState(() => { try { return localStorage.getItem("portal-guest") === "1"; } catch { return false; } });
   const [profile, setProfile] = useState<StudentProfile>(emptyProfile);
   const [resume, setResume] = useState<File | null>(null);
   const [jobDescription, setJobDescription] = useState("");
@@ -37,9 +41,20 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => { if (guest && !user) setProfile(getProfile(null)); }, [guest, user]);
+
   const saveProfile = (next: StudentProfile) => {
     setProfile(next);
-    if (user) localStorage.setItem("portal-profile-" + user.uid, JSON.stringify(next));
+    if (user || guest) { try { localStorage.setItem(profileKey(user), JSON.stringify(next)); } catch { /* storage unavailable */ } }
+  };
+  const startGuest = () => {
+    try { localStorage.setItem("portal-guest", "1"); } catch { /* storage unavailable */ }
+    setError(""); setProfile(getProfile(null)); setGuest(true);
+  };
+  const leaveSession = async () => {
+    try { if (user && auth) await signOut(auth); } catch { /* ignore */ }
+    try { localStorage.removeItem("portal-guest"); } catch { /* storage unavailable */ }
+    setGuest(false); setResume(null); setReview(null); setProfile(emptyProfile);
   };
   const handleSignIn = async () => {
     if (!auth || !firebaseConfigured) { setError("Google sign-in is not configured yet. Add the Firebase web app values from .env.example."); return; }
@@ -56,17 +71,17 @@ export default function App() {
     setResume(file);
   };
   const analyze = async () => {
-    if (!user || !resume || !jobDescription.trim()) return;
+    if ((!user && !guest) || !resume || !jobDescription.trim()) return;
     setAnalyzing(true); setError(""); setReview(null);
     try {
-      const token = await user.getIdToken();
+      const token = user ? await user.getIdToken() : null;
       const form = new FormData();
       form.append("resume", resume);
       form.append("jobDescription", jobDescription);
       form.append("profile", JSON.stringify(profile));
       const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:3001" : "");
       const response = await fetch(apiBase + "/api/analyze", {
-        method: "POST", headers: { Authorization: "Bearer " + token }, body: form,
+        method: "POST", headers: token ? { Authorization: "Bearer " + token } : {}, body: form,
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "We couldn't review this resume. Please try again.");
@@ -85,9 +100,9 @@ export default function App() {
   };
 
   if (authLoading) return <div className="loading-screen"><span className="brand-mark"><Sparkles size={17} /></span><span>Getting your workspace ready…</span></div>;
-  if (!user) return <main className="welcome-page">
+  if (!user && !guest) return <main className="welcome-page">
     <header className="welcome-nav"><a className="wordmark" href="#top"><span className="brand-mark"><Sparkles size={17} /></span> portal<span className="wordmark-dot">.</span></a><a className="nav-link" href="https://github.com" target="_blank" rel="noreferrer"><Github size={16} /> Built for your next step</a></header>
-    <section className="welcome-hero" id="top"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot" /> YOUR CAREER, IN FOCUS</div><h1>Make your next<br />application <em>count.</em></h1><p className="hero-description">A calmer way to understand your resume, find the skills a role asks for, and put your best work forward.</p><button className="google-button hero-signin" onClick={handleSignIn} disabled={authBusy}><GoogleG />{authBusy ? "Connecting…" : "Continue with Google"}<ArrowRight size={17} /></button>{!firebaseConfigured && <p className="config-note">Set up Firebase Google sign-in with the steps in the project README.</p>}<div className="hero-assurance"><CheckCircle2 size={15} /> Your resume is reviewed in memory and never saved by Portal.</div></div>
+    <section className="welcome-hero" id="top"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot" /> YOUR CAREER, IN FOCUS</div><h1>Make your next<br />application <em>count.</em></h1><p className="hero-description">A calmer way to understand your resume, find the skills a role asks for, and put your best work forward.</p><div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>{firebaseConfigured && <button className="google-button hero-signin" onClick={handleSignIn} disabled={authBusy}><GoogleG />{authBusy ? "Connecting…" : "Continue with Google"}<ArrowRight size={17} /></button>}<button className={firebaseConfigured ? "subtle-button" : "google-button hero-signin"} onClick={startGuest}>{firebaseConfigured ? "Continue as guest" : "Start your review"}<ArrowRight size={17} /></button></div><div className="hero-assurance"><CheckCircle2 size={15} /> Your resume is reviewed in memory and never saved by Portal.</div></div>
       <div className="hero-art"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="preview-card"><div className="preview-top"><div className="preview-avatar">AM</div><div><strong>Alex Morgan</strong><span>Product design · Student</span></div><BadgeCheck size={18} className="preview-check" /></div><div className="preview-divider" /><div className="preview-score-row"><div><span className="micro-label">ROLE READINESS</span><strong className="preview-score">82<span>/100</span></strong></div><div className="score-ring"><span>82</span></div></div><div className="preview-bar"><span /></div><div className="preview-tags"><span className="tag tag-match">✓ Figma</span><span className="tag tag-match">✓ Prototyping</span><span className="tag tag-gap">+ User research</span></div><div className="preview-insight"><Sparkles size={16} /><span><strong>A good next step</strong>Add a research example to match this role.</span></div></div><div className="float-chip chip-top"><span className="chip-icon">✦</span> Clear feedback, made for you</div><div className="float-chip chip-bottom"><span className="chip-icon chip-icon-lilac">↗</span> A stronger story starts here</div><div className="art-stamp">✳</div></div></section>
     <section className="feature-strip"><div className="feature"><span className="feature-icon"><Target size={19} /></span><div><strong>Know where you stand</strong><span>See what’s already working</span></div></div><div className="feature"><span className="feature-icon"><Sparkles size={19} /></span><div><strong>Find your next skill</strong><span>Match your experience to a role</span></div></div><div className="feature"><span className="feature-icon"><MessageSquareText size={19} /></span><div><strong>Tell your story well</strong><span>Shape a thoughtful application</span></div></div></section>
     <footer className="welcome-footer"><span>Thoughtful tools for the work ahead.</span><span>Made for students, wherever you’re headed.</span></footer>
@@ -96,7 +111,7 @@ export default function App() {
 
   return <div className="app-shell">
     <aside className={"sidebar " + (mobileNav ? "sidebar-open" : "")}><a className="wordmark" href="#home"><span className="brand-mark"><Sparkles size={17} /></span> portal<span className="wordmark-dot">.</span></a><div className="sidebar-caption">YOUR WORKSPACE</div><button className="side-link side-link-active" onClick={() => { setMobileNav(false); document.getElementById("home")?.scrollIntoView({ behavior: "smooth" }); }}><span className="side-icon"><Target size={17} /></span>Resume review<span className="side-active-dot" /></button>
-      <div className="sidebar-card"><div className="sidebar-card-icon"><GraduationCap size={18} /></div><div><strong>One step at a time</strong><p>Your skills grow with every experience. Start with what you have.</p></div></div><div className="sidebar-bottom"><div className="privacy-card"><CheckCircle2 size={15} /><span>Your resume stays yours. We never keep the file.</span></div><button className="profile-mini" onClick={() => document.getElementById("profile-name")?.focus()}><img src={user.photoURL || ""} alt="" /><span><strong>{profile.name || user.displayName || "Your profile"}</strong><small>{user.email}</small></span><ChevronDown size={15} /></button><button className="signout-link" onClick={() => auth && signOut(auth)}><LogOut size={14} /> Sign out</button></div>
+      <div className="sidebar-card"><div className="sidebar-card-icon"><GraduationCap size={18} /></div><div><strong>One step at a time</strong><p>Your skills grow with every experience. Start with what you have.</p></div></div><div className="sidebar-bottom"><div className="privacy-card"><CheckCircle2 size={15} /><span>Your resume stays yours. We never keep the file.</span></div><button className="profile-mini" onClick={() => document.getElementById("profile-name")?.focus()}>{user?.photoURL ? <img src={user.photoURL} alt="" /> : <span className="preview-avatar" style={{ width: 34, height: 34, fontSize: 13, flexShrink: 0 }}>{(profile.name.trim()[0] || "G").toUpperCase()}</span>}<span><strong>{profile.name || user?.displayName || "Your profile"}</strong><small>{user ? user.email : "Guest session"}</small></span><ChevronDown size={15} /></button><button className="signout-link" onClick={leaveSession}><LogOut size={14} /> {user ? "Sign out" : "Exit guest session"}</button></div>
     </aside>
     {mobileNav && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
     <main className="main-content" id="home"><header className="topbar"><button className="mobile-menu" aria-label="Open menu" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>Resume review</strong></div><div className="topbar-right"><span className="saved-label"><span /> Private workspace</span><button className="help-button" title="How your resume is used"><CircleHelp size={17} /></button></div></header>

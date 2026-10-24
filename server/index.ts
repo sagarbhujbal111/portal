@@ -32,10 +32,11 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 }
 
 type AuthRequest = Request & { userId?: string };
+// Sign-in is optional: visitors without a token are guests (still rate limited per IP).
+// If Firebase Admin is configured and a token is sent, it must be valid.
 const requireAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (!admin.apps.length) return res.status(503).json({ error: "Resume review is not configured yet. Add Firebase Admin credentials to the server environment." });
   const header = req.header("authorization");
-  if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "Please sign in to review your resume." });
+  if (!header?.startsWith("Bearer ") || !admin.apps.length) return next();
   try {
     const decoded = await admin.auth().verifyIdToken(header.slice(7));
     req.userId = decoded.uid;
