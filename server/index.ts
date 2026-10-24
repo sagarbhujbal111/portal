@@ -13,6 +13,10 @@ const app = express();
 const port = Number(process.env.PORT || 3001);
 const origin = process.env.APP_ORIGIN || "http://localhost:5173";
 app.disable("x-powered-by");
+// Render terminates TLS at a proxy; trust one hop so rate limiting sees each visitor's real IP.
+app.set("trust proxy", 1);
+// Health check is registered before the rate limiter so Render's frequent probes are never throttled.
+app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors({ origin, methods: ["GET", "POST"], allowedHeaders: ["Content-Type", "Authorization"] }));
 app.use(express.json({ limit: "100kb" }));
@@ -48,7 +52,6 @@ const memoryUpload = multer({
   },
 });
 
-app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 app.post("/api/analyze", requireAuth, memoryUpload.single("resume"), async (req: AuthRequest, res: Response) => {
   try {
     if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "Resume review is not configured yet. Add an OpenAI API key to the server environment." });
