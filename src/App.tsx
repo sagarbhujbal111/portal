@@ -64,7 +64,8 @@ export default function App() {
       form.append("resume", resume);
       form.append("jobDescription", jobDescription);
       form.append("profile", JSON.stringify(profile));
-      const response = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3001") + "/api/analyze", {
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:3001" : "");
+      const response = await fetch(apiBase + "/api/analyze", {
         method: "POST", headers: { Authorization: "Bearer " + token }, body: form,
       });
       const body = await response.json();
