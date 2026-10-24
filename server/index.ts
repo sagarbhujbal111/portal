@@ -88,6 +88,13 @@ app.post("/api/analyze", requireAuth, memoryUpload.single("resume"), async (req:
   }
 });
 
+// In production Render serves the Vite build and the API from this one service.
+app.use(express.static("dist"));
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api/")) return next();
+  return res.sendFile("index.html", { root: "dist" });
+});
+
 function validateReview(data: Record<string, unknown>) {
   const score = (value: unknown) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
   const strings = (value: unknown, max = 5): string[] => Array.isArray(value) ? value.filter((x): x is string => typeof x === "string").slice(0, max) : [];
