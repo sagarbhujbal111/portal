@@ -29,7 +29,7 @@ The Firebase web configuration is public client configuration; the service accou
 
 ## Production deployment
 
-Deploy the Vite frontend and Express API to a host that supports Node.js. Set the variables in .env.example in the hosting dashboard. Set APP_ORIGIN to the exact HTTPS origin serving the frontend. Set VITE_API_URL to the public HTTPS base URL of the API when frontend and API use different origins, then rebuild the frontend. Add the production domain to Firebase Authentication's authorized domains. Use a secret manager for the service account and OpenAI key.
+Deploy on Render with the included `render.yaml` Blueprint. Connect this repository and deploy the Blueprint; Render will build the Vite frontend and serve it with the Express API from one web service. Add the four Firebase web-app values, Firebase service account, and OpenAI API key in Render when prompted. Add the generated `onrender.com` domain to Firebase Authentication's authorized domains. Keep the service account and OpenAI key in Render's secret environment fields, never in the repository.
 
 The generated drafts may contain personal details from a resume. Review the privacy and retention terms of your chosen AI provider and hosting provider before accepting real student resumes. This starter does not add a database or persist uploaded files.
 
